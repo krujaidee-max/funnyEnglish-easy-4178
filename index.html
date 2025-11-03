@@ -2264,16 +2264,29 @@ function handsCircleOverHead(lm){
   return together && above;
 }
 
-// 2) วงกลมมือชนกัน "ใต้หัว"
+// 2) มือแตะกัน ต่ำกว่าหัว แต่ไม่ต่ำกว่าท้อง
 function handsCircleUnderHead(lm){
-  const L_WR=lm[15], R_WR=lm[16], NOSE=lm[0], MOUTH_L=lm[9], MOUTH_R=lm[10], CHEST=lm[12]||lm[11];
-  if(!L_WR||!R_WR||!NOSE) return false;
-  const chinY   = Math.max(NOSE.y, (MOUTH_L?.y ?? NOSE.y), (MOUTH_R?.y ?? NOSE.y)) + 0.03;
-  const chestY  = (CHEST?.y ?? chinY + 0.08);
-  const together= dist2D(L_WR,R_WR) <= 0.10;
-  const under   = (L_WR.y > chinY) && (R_WR.y > chinY) && (L_WR.y < chestY+0.1) && (R_WR.y < chestY+0.1);
-  return together && under;
+  const L_WR = lm[15], R_WR = lm[16];
+  const NOSE = lm[0], L_EYE = lm[1], R_EYE = lm[2];
+  if(!L_WR || !R_WR || !NOSE) return false;
+
+  // ===== อ้างอิงตำแหน่งหลัก =====
+  const headTopY = Math.min(
+    NOSE.y,
+    (L_EYE?.y ?? NOSE.y),
+    (R_EYE?.y ?? NOSE.y)
+  ); // ยิ่ง y น้อย = ยิ่งสูง
+  const { hipsY } = torsoRef(lm); // ใช้ hips เป็นแนวท้อง
+
+  // ===== ตรวจเงื่อนไข =====
+  const together = dist2D(L_WR, R_WR) <= 0.12; // มือแตะกัน
+  const wristsAvgY = (L_WR.y + R_WR.y) / 2;   // เฉลี่ยระดับมือ
+  const underHead = wristsAvgY > headTopY;    // ต่ำกว่าหัว
+  const aboveBelly = wristsAvgY < hipsY + 0.05; // ไม่ต่ำกว่าท้อง (เผื่อระยะนิด)
+
+  return together && underHead && aboveBelly;
 }
+
 
 // 3) วงกลมมือแตะ "ขาข้างใดข้างหนึ่ง"
 function handCircleAtLeg(lm){
@@ -2570,4 +2583,5 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden && stream
 <div id="emojiBurst" aria-hidden="true"></div>
 </body>
 </html>
+
 
