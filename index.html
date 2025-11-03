@@ -2295,19 +2295,49 @@ function sideStackedPoint(lm){
   return nearSide && stackY;
 }
 
-// 5) มือหนึ่งแตะคาง + อีกมือชี้ออกด้านข้าง
+// 5) มือหนึ่งอยู่ช่วงศีรษะ→ท้อง (แนวตั้งตรงกับศีรษะแบบไม่เคร่ง) + อีกมือชี้ออกด้านข้าง
+const CHIN_SIDE = {
+  xAlign: 0.12,        // มือที่อยู่ช่วงศีรษะ→ท้อง ต้องใกล้แกนกลางหน้า (NOSE.x) ไม่เกินค่านี้
+  yHeadOffset: 0.02,   // ขอบล่างจากศีรษะลงมานิดหน่อย
+  yBellyMargin: 0.04,  // ขอบบนแถวท้อง (อิง hipsY) เผื่อระยะเล็กน้อย
+  minSideX: 0.20       // มืออีกข้างต้องออกด้านข้างจากกลางหน้าอย่างน้อยเท่านี้
+};
+
 function chinAndSide(lm){
-  const L_WR=lm[15], R_WR=lm[16], NOSE=lm[0], MOUTH_L=lm[9], MOUTH_R=lm[10];
-  if(!L_WR||!R_WR||!NOSE) return false;
-  const chinRef = { x: (MOUTH_L?.x ?? NOSE.x), y: Math.max(NOSE.y, (MOUTH_L?.y ?? NOSE.y), (MOUTH_R?.y ?? NOSE.y)) + 0.02 };
-  const leftChin  = near(L_WR, chinRef, 0.12);
-  const rightChin = near(R_WR, chinRef, 0.12);
-  const other     = leftChin ? R_WR : rightChin ? L_WR : null;
+  const L_WR = lm[15], R_WR = lm[16];
+  const NOSE = lm[0], L_EYE = lm[1], R_EYE = lm[2];
+  if(!L_WR || !R_WR || !NOSE) return false;
+
+  // ระดับศีรษะ (y ยิ่งน้อย = ยิ่งสูง)
+  const headTopY = Math.min(
+    NOSE.y,
+    (L_EYE?.y ?? NOSE.y),
+    (R_EYE?.y ?? NOSE.y)
+  );
+
+  // อ้างอิงท้องจากสะโพก
+  const { hipsY } = torsoRef(lm);
+
+  // มือ "ในแนวดิ่งกับศีรษะ" และอยู่ช่วงศีรษะ→ท้อง
+  const inHeadToBelly = (w)=>{
+    if(!w) return false;
+    const yOk = between(w.y, headTopY + CHIN_SIDE.yHeadOffset, hipsY + CHIN_SIDE.yBellyMargin);
+    const xOk = Math.abs(w.x - NOSE.x) <= CHIN_SIDE.xAlign;
+    return yOk && xOk;
+  };
+
+  const leftAxis  = inHeadToBelly(L_WR);
+  const rightAxis = inHeadToBelly(R_WR);
+
+  // ถ้ามือซ้ายเป็นมือ "แนวดิ่งกับศีรษะ" → มือขวาต้องชี้ออกด้านข้าง (และกลับกัน)
+  const other = leftAxis ? R_WR : rightAxis ? L_WR : null;
   if(!other) return false;
-  // มืออีกข้าง "ชี้ออกด้านข้าง": ให้ระยะแกน X จากจุดกลางลำตัวค่อนข้างมาก
+
+  // มืออีกข้างต้อง "ออกด้านข้าง" จากกลางหน้าเพียงพอ
   const xDelta = Math.abs(other.x - NOSE.x);
-  return xDelta >= 0.20;
+  return xDelta >= CHIN_SIDE.minSideX;
 }
+
 
 // ===== ท่า post7..post15 =====
 
@@ -2364,21 +2394,26 @@ function poseSplitLegs(lm){
 
 
 // post10: ยิงปืน — แขนซ้อนชี้ทางเดียวกัน ระดับเดียวกัน
-const GESTURE_GUN = { maxYDiff:0.06, maxWristGapX:0.08, maxTilt:0.14, minLen:0.10 };
+// post10: ยิงปืน (รุ่นง่าย) — มือแตะกัน + อยู่ห่างลำตัวด้านข้าง
+const GESTURE_GUN = {
+  maxWristGap: 0.10,     // ระยะข้อมือชนกัน (แตะกัน)
+  minSideOffset: 0.18,   // ระยะออกด้านข้างจากแกนกลางลำตัว (ยิ่งมากยิ่งไกลตัว)
+};
+
 function poseGunStack(lm){
-  const LE=lm[13], LW=lm[15], RE=lm[14], RW=lm[16];
-  if(!LE||!LW||!RE||!RW) return false;
-  // เวคเตอร์ปลายแขน
-  const vLx=LW.x-LE.x, vLy=LW.y-LE.y, vRx=RW.x-RE.x, vRy=RW.y-RE.y;
-  const lenL=Math.hypot(vLx,vLy), lenR=Math.hypot(vRx,vRy);
-  if(lenL< GESTURE_GUN.minLen || lenR< GESTURE_GUN.minLen) return false;
-  // ทิศ x เดียวกัน (ซ้ายหรือขวา)
-  if(Math.sign(vLx)===0 || Math.sign(vRx)===0 || Math.sign(vLx)!==Math.sign(vRx)) return false;
-  // เอียงไม่มาก (กึ่งแนวราบ) + ข้อมือระดับใกล้กัน + ข้อมือห่างกันน้อย (ซ้อนกัน)
-  const tiltOk = Math.abs(vLy)<=GESTURE_GUN.maxTilt && Math.abs(vRy)<=GESTURE_GUN.maxTilt;
-  const levelOk= Math.abs(LW.y - RW.y) <= GESTURE_GUN.maxYDiff;
-  const stackOk= Math.abs(LW.x - RW.x) <= GESTURE_GUN.maxWristGapX;
-  return tiltOk && levelOk && stackOk;
+  const L_WR = lm[15], R_WR = lm[16];
+  if(!L_WR || !R_WR) return false;
+
+  // ต้อง "แตะกัน"
+  const together = dist2D(L_WR, R_WR) <= GESTURE_GUN.maxWristGap;
+
+  // ต้อง "ห่างจากลำตัว" ทางแกน X พอประมาณ
+  const { midX } = torsoRef(lm);              // แกนกลางลำตัว
+  const wristsMidX = (L_WR.x + R_WR.x) / 2;   // จุดกึ่งกลางระหว่างข้อมือ
+  const sideAway = Math.abs(wristsMidX - midX) >= GESTURE_GUN.minSideOffset;
+
+  // ไม่บังคับระดับสูง–ต่ำ เพื่อติดง่ายในห้องเรียน
+  return together && sideAway;
 }
 
 
@@ -2535,3 +2570,4 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden && stream
 <div id="emojiBurst" aria-hidden="true"></div>
 </body>
 </html>
+
