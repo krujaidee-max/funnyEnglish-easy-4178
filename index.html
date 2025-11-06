@@ -772,7 +772,7 @@ let __sideRequiredPicks = 1;      // จำนวนที่ต้องเล�
 let __sideOkSet = new Set();      // ชุด index ที่เป็น "ถูก" ในรอบนี้
 
 // ===== หน่วงเวลาปล่อยตัวเลือกหลังทำท่าทางเสร็จ =====
-const NEXT_RELEASE_DELAY_MS_DEFAULT = 1500;   // ← ค่าเริ่มต้น 1.5s (ปรับได้)
+const NEXT_RELEASE_DELAY_MS_DEFAULT = 1800;   // ← ค่าเริ่มต้น 1.5s (ปรับได้)
 let NEXT_RELEASE_DELAY_MS = NEXT_RELEASE_DELAY_MS_DEFAULT;
 let __postDelayTimer = null;
 
@@ -809,7 +809,7 @@ if (__postAutoSkipTimer){
   // ★ Auto-skip ท่าทางถ้ารอเกิน X ms (กันติดยาก)
 const POST_AUTO_SKIP_MS = 10000; // 10s
 let __postAutoSkipTimer = null;
-const POST_DELAY_AFTER_CLEAR_MS = 1000;   // ← 1 วินาที (ปรับได้)
+const POST_DELAY_AFTER_CLEAR_MS = 1800;   // ← 1 วินาที (ปรับได้)
 let __postAfterClearTimer = null;
 
 function enterPostPhaseAfterClearDelay(){
@@ -2601,6 +2601,7 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden && stream
 <div id="emojiBurst" aria-hidden="true"></div>
 </body>
 </html>
+
 
 
 
