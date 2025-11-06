@@ -779,7 +779,11 @@ let __postDelayTimer = null;
 function continueToNextWithDelay(){
   if (ended) return;
   if (__postDelayTimer) return;                    // กันกดซ้ำระหว่างหน่วง
-
+  // ✨ หยุดตัวจับเวลา auto-skip ถ้ามี (กำลังจะไปต่อแล้ว)
+if (__postAutoSkipTimer){ 
+  clearTimeout(__postAutoSkipTimer); 
+  __postAutoSkipTimer = null; 
+}
   awaitingContinue = false;                        // ปิดสถานะรอไปต่อ
   syncFastNextUI();                                // ซ่อน UI cue
 
@@ -802,6 +806,9 @@ function continueToNextWithDelay(){
   }, Math.max(0, NEXT_RELEASE_DELAY_MS|0));
 }
 
+  // ★ Auto-skip ท่าทางถ้ารอเกิน X ms (กันติดยาก)
+const POST_AUTO_SKIP_MS = 10000; // 10s
+let __postAutoSkipTimer = null;
 const POST_DELAY_AFTER_CLEAR_MS = 1000;   // ← 1 วินาที (ปรับได้)
 let __postAfterClearTimer = null;
 
@@ -816,6 +823,16 @@ function enterPostPhaseAfterClearDelay(){
     awaitingContinue = true;
     qDecor?.classList.add('arm-next');
     syncFastNextUI();
+    // ✨ ตั้งตัวจับเวลา auto-skip หากยังรออยู่เกิน 10 วิ
+if (__postAutoSkipTimer) { 
+  clearTimeout(__postAutoSkipTimer); 
+  __postAutoSkipTimer = null; 
+}
+__postAutoSkipTimer = setTimeout(()=>{
+  if (awaitingContinue && !ended) {
+    continueToNextWithDelay();  // จะเล่น belt + หน่วง แล้วปล่อย nextRound() ให้เอง
+  }
+}, POST_AUTO_SKIP_MS);
   }, Math.max(0, POST_DELAY_AFTER_CLEAR_MS|0));
 }
 
@@ -938,6 +955,11 @@ function syncFastNextUI(){
     qDecor?.classList.remove('arm-next');
     postCue?.classList.remove('show');
 postCue?.classList.remove('slot-left','slot-right'); // ล้างไว้รอบหน้า
+    // เคลียร์ตัวจับเวลา auto-skip เมื่อออกจากโหมดรอ
+if (__postAutoSkipTimer){ 
+  clearTimeout(__postAutoSkipTimer); 
+  __postAutoSkipTimer = null; 
+}
   }
 }
 
@@ -2579,6 +2601,7 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden && stream
 <div id="emojiBurst" aria-hidden="true"></div>
 </body>
 </html>
+
 
 
 
