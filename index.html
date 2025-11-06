@@ -2216,40 +2216,37 @@ function bothHandsOnHead(lm){
   return hitL && hitR;
 }
 
-// ⭐️ G5 ใหม่: "สองแขนชี้ไปทางเดียวกัน (ไม่ซ้อนกัน)"
+// ⭐️ G5 ใหม่: "สองแขนชี้ไปทางเดียวกัน (ไม่ซ้อนกัน)" → ผ่อนเกณฑ์: ข้างใดก็ได้ชี้ตรงพอ
 const GESTURE_G5 = {
-  minForearmLen: 0.12,   // ต้องเหยียดแขนพอสมควร
-  maxForearmTilt: 0.12,  // ไม่ชี้ขึ้น/ลงมาก (เน้นแนวราบ)
-  maxWristLevelDiff: 0.18 // ระดับข้อมือใกล้กัน (ไม่บน–ล่างห่างเกิน)
+  minForearmLen: 0.10,      // ยืดแขนพอประมาณ ไม่ต้องสุด
+  maxForearmAngleRad: 0.61, // ~35° จากแนวนอน (เอียงได้พอควร)
+  minHorizX: 0.06           // คอมโพเนนต์แกน X ต้องพอมี ไม่ใช่ชี้ขึ้น/ลงเกือบทั้งที
 };
+
+// ฟังก์ชันชื่อเดิม แต่เกณฑ์ใหม่: ผ่านถ้า "ซ้ายหรือขวา" ติดอย่างน้อย 1 ข้าง
 function bothForearmsPointSameSide(lm){
-  // BlazePose: 13=left elbow, 15=left wrist, 14=right elbow, 16=right wrist
   const LE=lm[13], LW=lm[15], RE=lm[14], RW=lm[16];
   if(!LE||!LW||!RE||!RW) return false;
 
   const vLx = LW.x-LE.x, vLy = LW.y-LE.y;
   const vRx = RW.x-RE.x, vRy = RW.y-RE.y;
+
   const lenL = Math.hypot(vLx, vLy);
   const lenR = Math.hypot(vRx, vRy);
-  if (lenL < GESTURE_G5.minForearmLen || lenR < GESTURE_G5.minForearmLen) return false;
 
-  // ทั้งคู่ต้องชี้ไปทาง x เดียวกัน (ซ้ายหรือขวาเหมือนกัน)
-  const dirL = Math.sign(vLx);
-  const dirR = Math.sign(vRx);
-  if (dirL===0 || dirR===0) return false;
-  if (dirL !== dirR) return false;
+  // เช็ก "แขนข้างเดียว" ให้ชี้ตรงพอ (แนวนอน ±35°, และยืดแขนพอ)
+  const leftOK  = lenL >= GESTURE_G5.minForearmLen
+               && Math.abs(Math.atan2(vLy, vLx)) <= GESTURE_G5.maxForearmAngleRad
+               && Math.abs(vLx) >= GESTURE_G5.minHorizX;
 
-  // ไม่เอียงขึ้น/ลงมากไป (แนวราบ)
-  if (Math.abs(vLy) > GESTURE_G5.maxForearmTilt) return false;
-  if (Math.abs(vRy) > GESTURE_G5.maxForearmTilt) return false;
+  const rightOK = lenR >= GESTURE_G5.minForearmLen
+               && Math.abs(Math.atan2(vRy, vRx)) <= GESTURE_G5.maxForearmAngleRad
+               && Math.abs(vRx) >= GESTURE_G5.minHorizX;
 
-  // ไม่ซ้อนบน–ล่าง: ระดับข้อมือใกล้กัน
-  if (Math.abs(LW.y - RW.y) > GESTURE_G5.maxWristLevelDiff) return false;
-
-  return true;
+  return leftOK || rightOK; // ✅ ผ่านถ้ามีอย่างน้อย 1 ข้างชี้ตรงพอ
 }
 
-// helper: ค่า y เล็ก = สูงขึ้นบนจอ
+// helper (เดิมใช้ต่อได้)
 function near(a,b,thr){ if(!a||!b) return false; return dist2D(a,b) <= (thr ?? 0.12); }
 function between(y, a, b){ const lo=Math.min(a,b), hi=Math.max(a,b); return y>=lo && y<=hi; }
 
@@ -2582,6 +2579,7 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden && stream
 <div id="emojiBurst" aria-hidden="true"></div>
 </body>
 </html>
+
 
 
 
