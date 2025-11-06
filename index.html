@@ -770,6 +770,12 @@ let __multiCorrectSet = new Set();
 let __sideChosen = new Set();     // index ที่ผู้เล่นเลือกไปแล้วในรอบนี้
 let __sideRequiredPicks = 1;      // จำนวนที่ต้องเลือกใน 1 รอบ (เราจะตั้ง = 2 ตอนสปอน)
 let __sideOkSet = new Set();      // ชุด index ที่เป็น "ถูก" ในรอบนี้
+  // 🔒 กลุ่มคูลดาวน์กันลั่นสำหรับโหมด 4 วง (ล็อกทั้ง container)
+let __sideInterPickLock = false;
+let __sideLastClickAt = 0;
+const SIDE_INTERPICK_COOLDOWN_MS = 450;   // คูลดาวน์ระหว่างคำตอบที่ 1 → 2
+const SIDE_GROUP_LOCK_MS         = 450;   // ล็อกทั้ง container กันคลิกซ้อนเฟรมเดียว
+
 
 // ===== หน่วงเวลาปล่อยตัวเลือกหลังทำท่าทางเสร็จ =====
 const NEXT_RELEASE_DELAY_MS_DEFAULT = 1800;   // ← ค่าเริ่มต้น 1.5s (ปรับได้)
@@ -1633,6 +1639,11 @@ function spawnSideOptions4Text(labels, okSet){
   const side = document.getElementById('sideChoices');
   if(!side) return;
 
+    // ♻️ เริ่มรอบใหม่: ปลดล็อกทุกอย่าง
+  __sideInterPickLock = false;
+  __sideLastClickAt = 0;
+  side.style.pointerEvents = 'auto';
+
   // รีเซ็ตสถานะเลือกหลายครั้งของโหมด 4 วง
   __sideChosen.clear();
   __sideRequiredPicks = 2;       // ← ต้องเลือก 2 วงต่อรอบ
@@ -1729,6 +1740,22 @@ function autoFitBubbleLabel(bub){
 
 function tryAnswerSide4(bub){
   if (ended || !awaitingAnswer) return;
+    // ⛔ กันลั่นระหว่างคำตอบ (เช็กทั้ง “แฟลก” และ “เวลาล่าสุด”)
+  if (__sideInterPickLock) return;
+  const now = performance.now();
+  if (now - __sideLastClickAt < SIDE_GROUP_LOCK_MS) return;
+  __sideLastClickAt = now;
+
+  // 🔒 ล็อกทั้งกล่อง 4 วงชั่วคราว เพื่อกันเคสคลิกสองปุ่มในเฟรมเดียว
+  const sideWrap = document.getElementById('sideChoices');
+  if (sideWrap) sideWrap.style.pointerEvents = 'none';
+  setTimeout(()=>{
+    // เปิดใหม่เฉพาะเมื่อยังต้องเลือกต่อ (ยังไม่ครบ 2) และยังอยู่ในรอบตอบ
+    if (!ended && awaitingAnswer && __sideChosen.size < __sideRequiredPicks){
+      sideWrap.style.pointerEvents = 'auto';
+    }
+  }, SIDE_GROUP_LOCK_MS);
+
 
   const idx = Number(bub.dataset.index);
   if (__sideChosen.has(idx)) return;        // กันกดซ้ำวงเดิม
@@ -1754,9 +1781,13 @@ function tryAnswerSide4(bub){
   }
   renderGold(score);
 
+  // ถ้ายังไม่ครบ 2 ช้อยส์ → เปิดคูลดาวน์ช่วงสั้น ๆ กันลั่นก่อนคลิกข้อถัดไป
   if (__sideChosen.size < __sideRequiredPicks){
+    __sideInterPickLock = true;
+    setTimeout(()=>{ __sideInterPickLock = false; }, SIDE_INTERPICK_COOLDOWN_MS);
     return;
   }
+
 
   boostQuestionOutFast(240); 
   const all = [...document.querySelectorAll('#sideChoices .bubble-pos')];
@@ -2601,6 +2632,7 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden && stream
 <div id="emojiBurst" aria-hidden="true"></div>
 </body>
 </html>
+
 
 
 
