@@ -853,6 +853,9 @@ const postCue = document.getElementById('postCue');   // ← ป้ายสั�
 // ====== Cue ท่าทางระหว่างรอไปต่อ (สุ่มต่อรอบ) ======
 window.__cueActive = false;                 // มี cue กำลังแสดงอยู่ไหม
 window.__currentPostGesture = null;         // id ท่าที่ต้องตรวจตอนนี้
+  // ⏳ กันตรวจจับทันทีหลังโชว์รูปท่า (delay แขน 1 วิ)
+let __poseEnableAt = 0;                     // เวลา (ms) ที่ “เริ่มอนุญาตให้ตรวจจับ”
+const POST_GESTURE_ARM_MS = 1000;           // ดีเลย์ 1,000ms หลังปล่อยรูปคิวท่า
 
 // แมประหว่าง "ท่า" ↔ "รูป" (post1 = เดิม: แตะหูทั้งสองข้าง)
 const POST_CUES = [
@@ -950,6 +953,8 @@ function syncFastNextUI(){
     if (!window.__cueActive){
       window.__cueActive = true;
       selectRandomPostCue();     // ← สุ่ม post2–post6 (รวม post1 เดิม)
+          // ⏳ หลังโชว์รูปท่า ให้รอ 1 วิ ก่อนค่อยยอมรับท่าทาง
+    __poseEnableAt = performance.now() + POST_GESTURE_ARM_MS;
     }
     fastNext?.classList.add('show','arm-next');
     qDecor?.classList.add('arm-next');
@@ -2560,6 +2565,8 @@ function poseArmAtHeadLevel(lm){
 function updateNextPose(lm){
   // ต้องเปิดกล้อง และเกมต้อง “กำลังรอไปต่อ” เท่านั้น
   if(!CAM_ON) return;
+    // ⏳ กันตรวจจับใน 1 วินาทีแรกหลังโชว์รูปคิวท่า
+  if (performance.now() < __poseEnableAt) return;
   if(performance.now() < __poseCooldownUntil) return;
   const cue = (window.__currentPostGesture || 'ears');
   let ok = false;
@@ -2632,6 +2639,7 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden && stream
 <div id="emojiBurst" aria-hidden="true"></div>
 </body>
 </html>
+
 
 
 
