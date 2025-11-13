@@ -2202,6 +2202,7 @@ const GESTURE_NEXT = {
 };
 let __poseHits = [];     // หน้าต่างเฟรม (boolean) สำหรับท่า this-round
 let __poseCooldownUntil = 0;  // timestamp ที่ยัง “ห้ามทริกเกอร์”
+let __poseTriggerTimer = null; // ⬅️ เพิ่มตัวนี้
 
 
 function fitCanvas(){ const dpr = CAM_ON? 1 : Math.max(1, window.devicePixelRatio||1); cvs.width=Math.round(innerWidth*dpr); cvs.height=Math.round(innerHeight*dpr); cvs.style.width=innerWidth+'px'; cvs.style.height=innerHeight+'px'; ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr) }
@@ -2346,58 +2347,54 @@ function handCircleAtLeg(lm){
   return !!(hitLeft || hitRight);
 }
 
-// 4) มือสองข้างชี้ข้างลำตัว "ซ้อนกันบน–ล่าง" (ใกล้ลำตัว แนวตั้งซ้อน x ใกล้กัน)
+// 4) มือ 1 ข้าง (ซ้ายหรือขวา) ออกห่างจากลำตัว
 function sideStackedPoint(lm){
-  const L_WR=lm[15], R_WR=lm[16], L_HIP=lm[23], R_HIP=lm[24];
-  if(!L_WR||!R_WR||!L_HIP||!R_HIP) return false;
-  const torsoX = (L_HIP.x + R_HIP.x)/2;
-  const nearTorsoX = (p)=> Math.abs(p.x - torsoX) <= 0.10;  // อยู่ข้างลำตัว
-  const stackY = Math.abs(L_WR.y - R_WR.y) >= 0.10;         // ซ้อนบน–ล่าง
-  const nearSide = nearTorsoX(L_WR) && nearTorsoX(R_WR);
-  return nearSide && stackY;
+  const L_WR = lm[15], R_WR = lm[16];
+  const L_HIP = lm[23], R_HIP = lm[24];
+  if(!L_HIP || !R_HIP) return false;
+
+  // แกนกลางลำตัว (เอาจากสะโพกซ้าย–ขวา)
+  const torsoX = (L_HIP.x + R_HIP.x) / 2;
+
+  // ระยะที่ถือว่า "ออกห่างจากลำตัว"
+  const farFromTorsoX = (p)=> p && Math.abs(p.x - torsoX) >= 0.18;
+
+  // ถ้ามือซ้ายหรือมือขวาข้างใดข้างหนึ่ง "ออกห่างลำตัว" ก็ถือว่าท่านี้ติด
+  const leftFar  = farFromTorsoX(L_WR);
+  const rightFar = farFromTorsoX(R_WR);
+
+  return leftFar || rightFar;
 }
 
-// 5) มือหนึ่งอยู่ช่วงศีรษะ→ท้อง (แนวตั้งตรงกับศีรษะแบบไม่เคร่ง) + อีกมือชี้ออกด้านข้าง
+
+// 5) มือหนึ่งอยู่ "ใต้ตา" + อีกมือหนึ่งอยู่ "ห่างลำตัว" และ "สูงกว่ามือใต้ตา"
 const CHIN_SIDE = {
-  xAlign: 0.12,        // มือที่อยู่ช่วงศีรษะ→ท้อง ต้องใกล้แกนกลางหน้า (NOSE.x) ไม่เกินค่านี้
-  yHeadOffset: 0.02,   // ขอบล่างจากศีรษะลงมานิดหน่อย
-  yBellyMargin: 0.04,  // ขอบบนแถวท้อง (อิง hipsY) เผื่อระยะเล็กน้อย
-  minSideX: 0.20       // มืออีกข้างต้องออกด้านข้างจากกลางหน้าอย่างน้อยเท่านี้
+  yUnderEyeMargin: 0.02,     // ต่ำกว่าตานิดหน่อย
+  minSideFromBody: 0.14      // ระยะที่ถือว่า "ห่างลำตัว"
 };
 
 function chinAndSide(lm){
   const L_WR = lm[15], R_WR = lm[16];
-  const NOSE = lm[0], L_EYE = lm[1], R_EYE = lm[2];
-  if(!L_WR || !R_WR || !NOSE) return false;
+  const L_EYE = lm[1], R_EYE = lm[2];
+  if(!L_WR || !R_WR || !L_EYE || !R_EYE) return false;
 
-  // ระดับศีรษะ (y ยิ่งน้อย = ยิ่งสูง)
-  const headTopY = Math.min(
-    NOSE.y,
-    (L_EYE?.y ?? NOSE.y),
-    (R_EYE?.y ?? NOSE.y)
-  );
+  // ระดับตา (เอาต่ำกว่าตาที่ต่ำที่สุดเป็นเกณฑ์)
+  const eyeY = Math.max(L_EYE.y, R_EYE.y);
 
-  // อ้างอิงท้องจากสะโพก
-  const { hipsY } = torsoRef(lm);
+  // ศูนย์กลางลำตัว
+  const { midX } = torsoRef(lm);
 
-  // มือ "ในแนวดิ่งกับศีรษะ" และอยู่ช่วงศีรษะ→ท้อง
-  const inHeadToBelly = (w)=>{
-    if(!w) return false;
-    const yOk = between(w.y, headTopY + CHIN_SIDE.yHeadOffset, hipsY + CHIN_SIDE.yBellyMargin);
-    const xOk = Math.abs(w.x - NOSE.x) <= CHIN_SIDE.xAlign;
-    return yOk && xOk;
-  };
+  // มือที่ "อยู่ใต้ตา"
+  const isUnder = (WR)=> WR && WR.y >= (eyeY + CHIN_SIDE.yUnderEyeMargin);
 
-  const leftAxis  = inHeadToBelly(L_WR);
-  const rightAxis = inHeadToBelly(R_WR);
+  // มือที่ "ห่างลำตัว"
+  const isFar   = (WR)=> WR && Math.abs(WR.x - midX) >= CHIN_SIDE.minSideFromBody;
 
-  // ถ้ามือซ้ายเป็นมือ "แนวดิ่งกับศีรษะ" → มือขวาต้องชี้ออกด้านข้าง (และกลับกัน)
-  const other = leftAxis ? R_WR : rightAxis ? L_WR : null;
-  if(!other) return false;
+  // ------------- เงื่อนไขใหม่: มือไกลต้องสูงกว่ามือใต้ตา -------------
+  const leftHigherThanRight = (isUnder(R_WR) && isFar(L_WR) && L_WR.y < R_WR.y);
+  const rightHigherThanLeft = (isUnder(L_WR) && isFar(R_WR) && R_WR.y < L_WR.y);
 
-  // มืออีกข้างต้อง "ออกด้านข้าง" จากกลางหน้าเพียงพอ
-  const xDelta = Math.abs(other.x - NOSE.x);
-  return xDelta >= CHIN_SIDE.minSideX;
+  return leftHigherThanRight || rightHigherThanLeft;
 }
 
 
@@ -2592,20 +2589,29 @@ function updateNextPose(lm){
     __poseHits.length = 0;
     __poseCooldownUntil = performance.now() + GESTURE_NEXT.cooldownMs;
 
-    try{
-      // ใช้ fastNext ถ้ามี, ไม่งั้นลอง qDecor
-      const fast = document.getElementById('fastNext');
-      if (typeof awaitingContinue !== 'undefined' && typeof ended !== 'undefined') {
-        if (awaitingContinue && !ended) {
+    // เคลียร์ timer เดิม (ถ้ามี) กันทริกเกอร์ซ้ำ
+    if (__poseTriggerTimer){
+      clearTimeout(__poseTriggerTimer);
+      __poseTriggerTimer = null;
+    }
+
+    // ⭐ หน่วง 1 วินาทีก่อนค่อยเรียก NEXT
+    __poseTriggerTimer = setTimeout(()=>{
+      __poseTriggerTimer = null;
+      try{
+        const fast = document.getElementById('fastNext');
+        if (typeof awaitingContinue !== 'undefined' && typeof ended !== 'undefined') {
+          if (awaitingContinue && !ended) {
+            (fast || qDecor)?.click();
+          }
+        } else {
           (fast || qDecor)?.click();
         }
-      } else {
-        // เผื่อสโคปไม่เห็นตัวแปร: ใช้คลิก fastNext เฉย ๆ
-        (fast || qDecor)?.click();
-      }
-    }catch(_){}
+      }catch(_){}
+    }, 700); // ← หน่วง 1000ms (1 วินาที)
   }
 }
+
 
 function drawPoseAndColliders(res){ 
 const sw=innerWidth, sh=innerHeight; ctx.clearRect(0,0,sw,sh); if(!res?.landmarks?.length) 
@@ -2632,4 +2638,5 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden && stream
 <div id="emojiBurst" aria-hidden="true"></div>
 </body>
 </html>
+
 
